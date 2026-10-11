@@ -1,18 +1,12 @@
 import subprocess
 import webbrowser
-import logging
-
-logger = logging.getLogger(__name__)
-
-# Ricordato al modello dopo ogni apertura, così non dichiara azioni fatte "dentro" la pagina
-AVVISO_PAGINA = ". Nota: sulla pagina non posso fare altro, il resto lo fa l'utente."
 
 
 def apri_sito(url: str) -> str:
-    logger.info(f"URL ricevuto dal modello: {url}")
+    print(f"URL ricevuto dal modello: {url}")
 
     webbrowser.open(url)
-    return f"Ho aperto: {url}" + AVVISO_PAGINA
+    return f"Ho aperto: {url}"
 
 
 
@@ -24,11 +18,8 @@ PROGRAMMI_CONSENTITI = {
     "explorer": "explorer.exe",
 }
 
-# Programmi che accettano un URL come argomento da riga di comando
-BROWSER = {"chrome"}
-
-def apri_programma(programma:str, url: str | None = None) ->str:
-    logger.info(f"Programma ricevuto dal modello: {programma} (url: {url})")
+def apri_programma(programma:str) ->str:
+    print(f"Programma ricevuto dal modello: {programma}")
     
     chiave= programma.strip().lower()
     
@@ -36,11 +27,5 @@ def apri_programma(programma:str, url: str | None = None) ->str:
         return f"'{programma}' non è tra i programmi consentiti. Disponibili: {', '.join(PROGRAMMI_CONSENTITI.keys())}"
     
     percorso = PROGRAMMI_CONSENTITI[chiave]
-    if url and chiave in BROWSER:
-        subprocess.Popen([percorso, url])
-        return f"Ho aperto {url} in {programma}" + AVVISO_PAGINA
-    
     subprocess.Popen(percorso)
-    if url:
-        return f"Ho aperto: {programma}. " + apri_sito(url)
     return f"Ho aperto: {programma}"
