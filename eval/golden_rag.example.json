@@ -1,0 +1,5 @@
+[
+  {"domanda": "Come avevo strutturato l'architettura multi-tenant?", "note_attese": ["Architettura multi-tenant"]},
+  {"domanda": "Come funziona Entity Framework come ORM?", "note_attese": ["Entity Framework"]},
+  {"domanda": "Quali comandi uso per fare il deploy?", "note_attese": ["Deploy", "Docker"]}
+]

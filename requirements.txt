@@ -1,0 +1,17 @@
+langgraph>=1.2
+langchain-core>=1.6
+langchain-ollama>=1.1
+langchain-chroma>=1.1
+chromadb>=1.5
+rank-bm25>=0.2.2
+fastapi>=0.141
+uvicorn>=0.53
+pydantic>=2.13
+sqlalchemy>=2.0
+mcp>=2.3,<3
+requests>=2.34
+python-dotenv>=1.0
+tqdm>=4.70
+typing-extensions>=4.16
+pytest>=8.0
+httpx>=0.28

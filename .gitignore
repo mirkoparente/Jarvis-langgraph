@@ -1,0 +1,23 @@
+# Ambiente virtuale
+venv/
+.venv/
+
+# Python
+__pycache__/
+.pytest_cache/
+*.pyc
+
+# Dati locali (database, indice vettoriale, note personali)
+.env
+dati/
+note/
+*.log
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Golden set RAG (contiene i titoli delle note personali)
+eval/golden_rag.json
