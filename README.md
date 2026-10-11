@@ -5,8 +5,8 @@ Jarvis è un assistente personale che gira **interamente in locale** grazie a [O
 richiesta e la passa all'agente più adatto. Può eseguire azioni pratiche (meteo, ora, note, aprire siti e
 programmi, classificare messaggi tramite un workflow n8n) e rispondere a domande sulle tue note personali in Markdown tramite **RAG ibrido** (BM25 + ricerca semantica).
 
-Puoi usarlo in tre modi: da terminale, tramite API REST (FastAPI) oppure come server **MCP** per client
-come Claude Desktop.
+Puoi usarlo in quattro modi: da terminale, con un'interfaccia grafica web (**Streamlit**), tramite API REST
+(FastAPI) oppure come server **MCP** per client come Claude Desktop.
 
 ## Architettura
 
@@ -14,13 +14,13 @@ come Claude Desktop.
                     ┌──────────────┐
    domanda ───────▶ │ orchestratore│  (output strutturato: azioni | ricerca | rifiuta)
                     └──────┬───────┘
-          ┌────────────────┼─────────────────┐
-          ▼                ▼                 ▼
-  ┌───────────────┐ ┌───────────────┐   ┌─────────┐
-  │ agente_azioni │ │agente_ricerca │   │ rifiuta │
-  └──────┬────────┘ └──────┬────────┘   └─────────┘
-         ▼                 ▼
-  strumenti_azioni   strumenti_ricerca ──(nessun risultato)──▶ agente_azioni
+          ┌────────────────┴─────────────────┐
+          ▼ azioni                           ▼ ricerca / rifiuta
+  ┌───────────────┐                  ┌───────────────┐
+  │ agente_azioni │                  │agente_ricerca │
+  └──────┬────────┘                  └──────┬────────┘
+         ▼                                  ▼
+  strumenti_azioni                   strumenti_ricerca ──(nessun risultato)──▶ agente_azioni
   meteo, ora, note,  cerca_note (RAG ibrido)
   apri sito/programma,
   n8n (webhook)
@@ -28,13 +28,18 @@ come Claude Desktop.
          └──(nessuna azione disponibile)──▶ non_so
 ```
 
-- **Orchestratore**: usa un LLM con output strutturato (Pydantic) per scegliere la categoria.
+- **Orchestratore**: usa un LLM con output strutturato (Pydantic) per scegliere la categoria, guardando gli
+  ultimi 4 messaggi della conversazione (così capisce anche le domande di seguito, es. "e a Roma?").
+  Le domande su nomi che non sono cultura generale (un progetto, un'app, un cliente) vanno in `ricerca`.
+- **Domande "rifiuta"**: invece di essere scartate subito passano comunque dall'agente ricerca, per evitare
+  falsi rifiuti su argomenti presenti nelle note. Se nelle note non c'è nulla e non esiste un'azione adatta,
+  Jarvis risponde che non può aiutare (`non_so`).
 - **Agente azioni**: tool calling su meteo ([Open-Meteo](https://open-meteo.com), senza API key), ora corrente,
   lettura/scrittura note, apertura di siti web e di un elenco ristretto di programmi.
 - **Integrazione n8n**: lo strumento `n8n` invia il messaggio a un webhook n8n, dove un LLM lo classifica
   (categoria, urgenza, risposta suggerita) e il risultato viene salvato su PostgreSQL. Il workflow è nel repository [n8n_classificatore](https://github.com/mirkoparente/n8n_classificatore).
-- **Agente ricerca**: interroga le note personali con BM25 + embedding Chroma e risponde solo con ciò che trova.
-  Se non trova nulla, passa la richiesta all'agente azioni.
+- **Agente ricerca**: interroga le note personali con BM25 + embedding Chroma a ogni domanda e risponde solo
+  con ciò che trova. Se non trova nulla, passa la richiesta all'agente azioni.
 - **Memoria**: la cronologia delle conversazioni è salvata per sessione in SQLite (SQLAlchemy).
 
 ## Struttura del progetto
@@ -42,14 +47,16 @@ come Claude Desktop.
 | File / cartella | Descrizione |
 | --- | --- |
 | `main.py` | Chat da terminale |
+| `app_chat.py` | Interfaccia grafica di chat con Streamlit |
 | `api.py` | API REST con FastAPI |
 | `mcp_server.py` | Server MCP che espone gli strumenti |
 | `multiagente.py` | Grafo LangGraph multi-agente (versione principale) |
 | `langchain_tools.py` | Definizione dei tool per LangChain |
-| `tools/` | Implementazione degli strumenti (meteo, ora, note, browser, ricerca) |
+| `tools/` | Implementazione degli strumenti (meteo, ora, note, browser, ricerca, webhook n8n) |
 | `rag/` | Chunking, indicizzazione Chroma, ricerca semantica e ibrida |
 | `model/models.py`, `database_orm.py` | Modelli e accesso al DB con SQLAlchemy |
 | `config.py` | Configurazione tramite variabili d'ambiente |
+| `logging_config.py` | Configurazione del logging (file `jarvis.log`) |
 | `tests/` | Test unitari (pytest) |
 | `eval/` | Golden set e script di valutazione |
 | `dati/` | Generata in automatico: database, indice vettoriale, note create dall'agente |
@@ -119,6 +126,14 @@ python main.py
 ```
 
 Scrivi `esci` per terminare.
+
+### Interfaccia grafica (Streamlit)
+
+```bash
+streamlit run app_chat.py
+```
+
+Si apre nel browser su http://localhost:8501. Ogni scheda del browser usa una nuova sessione di conversazione.
 
 ### API REST
 
@@ -194,11 +209,14 @@ python -m eval.valuta
 - "Che tempo fa a Roma?" → agente azioni (Open-Meteo)
 - "Crea una nota spesa con latte e pane" → agente azioni
 - "Apri vscode" / "Apri https://github.com" → agente azioni
+- "Classifica questo messaggio di un cliente: mi è arrivata una bolletta di 400 euro" → agente azioni (n8n)
 - "Cosa ho scritto sull'architettura del progetto X?" → agente ricerca (RAG)
-- "Chi ha vinto i mondiali del 2006?" → rifiutata (fuori ambito)
+- "Dimmi com'è fatta l'app Y" → agente ricerca (nome non di cultura generale)
+- "Chi ha vinto i mondiali del 2006?" → nessun risultato nelle note → non può aiutare (fuori ambito)
 
 ## Sicurezza
 
-- L'agente può aprire solo i programmi presenti in `PROGRAMMI_CONSENTITI` (`tools/browser.py`).
+- L'agente può aprire solo i programmi presenti in `PROGRAMMI_CONSENTITI` (`tools/browser.py`);
+  i siti devono essere URL che iniziano con `http://` o `https://`.
 - I titoli delle note accettano solo lettere, numeri, spazi e underscore, per evitare path traversal.
 - L'API non ha autenticazione: tienila su `localhost` e non esporla in rete.
