@@ -17,19 +17,16 @@ def meteo_attuale(citta:str)->str:
     return ottieni_meteo(citta)
 
 @tool
-def apri(cosa: str, url: str | None = None) -> str:
+def apri(cosa: str) -> str:
     """Apre un programma sul computer O un sito web, in base a cosa viene richiesto.
     Se 'cosa' è il nome di un programma noto (chrome, notepad, calcolatrice, vscode, explorer), 
     apre quel programma. Altrimenti, se è un URL o un sito, apre quello nel browser.
-    Se l'utente chiede di aprire un sito IN un browser specifico (es. "apri chrome e vai su google"),
-    fai UNA sola chiamata con cosa='chrome' e url='https://google.com'.
     
     Args:
         cosa: nome di un programma (es. 'chrome') oppure un URL completo (es. 'https://google.com')
-        url: facoltativo, URL completo da aprire dentro il programma indicato in 'cosa'
     """
     if cosa.strip().lower() in PROGRAMMI_CONSENTITI:
-        return apri_programma(cosa, url)
+        return apri_programma(cosa)
     return apri_sito(cosa)
 
 @tool

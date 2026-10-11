@@ -8,9 +8,7 @@ from langgraph.graph.message import add_messages
 from langchain_ollama import ChatOllama
 from database_orm import carica_messaggi, salva_messaggi
 from langchain_tools import scrivi_nota,apri,cerca_note, leggi_la_nota, meteo_attuale, ora_corrente, nessuna_azione_disponibile,n8n
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
-
-from tools.browser import AVVISO_PAGINA
+from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
 from config import MODELLO_LLM, OLLAMA_BASE_URL
 import logging
 
@@ -24,8 +22,8 @@ class DecisioneRouting(BaseModel):
     categoria: Literal["azioni", "ricerca", "rifiuta"] = Field(
     description="""Sei un router. Classifica la richiesta dell'utente in UNA categoria:
 - azioni: dati in tempo reale o comandi da eseguire ora (ora attuale, meteo, aprire siti/programmi, creare/leggere/modificare note, classificare il messaggio o reclamo di un cliente). Es: "che ore sono?", "che tempo fa a Milano?", "apri chrome", "leggi la nota spesa", "classifica questo messaggio di un cliente: mi è arrivata una bolletta di 400 euro".
-- ricerca: recuperare cose che l'utente ha GIA' scritto nelle sue note. Es: "cosa ho scritto sull'architettura?", "quali task avevo per il progetto X?".
-- rifiuta: cultura generale non legata all'utente. Es: "chi era Napoleone?"."""
+- ricerca: recuperare cose che l'utente ha GIA' scritto nelle sue note, compresi i suoi progetti e le app che ha sviluppato. Se la domanda riguarda un nome che non è cultura generale (un progetto, un'app, un cliente), scegli ricerca. Es: "cosa ho scritto sull'architettura?", "quali task avevo per il progetto X?", "dimmi com'è fatta l'app Y".
+- rifiuta: SOLO cultura generale nota a tutti (storia, scienza, personaggi famosi), non legata all'utente. Es: "chi era Napoleone?"."""
 )
     
     
@@ -37,15 +35,14 @@ modello_router_strutturato = modello_router.with_structured_output(DecisioneRout
 
 PROMPT_ROUTER = SystemMessage(content="""Sei un router. Classifica la richiesta dell'utente in UNA categoria:
 - azioni: dati in tempo reale o comandi da eseguire ora (ora attuale, meteo, aprire siti/programmi, creare/leggere/modificare note, classificare il messaggio o reclamo di un cliente). Es: "che ore sono?", "che tempo fa a Milano?", "apri chrome", "leggi la nota spesa", "classifica questo messaggio di un cliente: mi è arrivata una bolletta di 400 euro".
-- ricerca: recuperare cose che l'utente ha GIA' scritto nelle sue note. Es: "cosa ho scritto sull'architettura?", "quali task avevo per il progetto X?".
-- rifiuta: cultura generale non legata all'utente. Es: "chi era Napoleone?".""")
+- ricerca: recuperare cose che l'utente ha GIA' scritto nelle sue note, compresi i suoi progetti e le app che ha sviluppato. Se la domanda riguarda un nome che non è cultura generale (un progetto, un'app, un cliente), scegli ricerca. Es: "cosa ho scritto sull'architettura?", "quali task avevo per il progetto X?", "dimmi com'è fatta l'app Y".
+- rifiuta: SOLO cultura generale nota a tutti (storia, scienza, personaggi famosi), non legata all'utente. Es: "chi era Napoleone?".""")
 
 def nodo_orchestratore(stato: StatoMultiAgente) -> dict:
-    ultimo_messaggio = stato["messages"][-1].content
+    ultimi_messaggi = stato["messages"][-4:]
 
     decisione = modello_router_strutturato.invoke(
-        [PROMPT_ROUTER, HumanMessage(content=ultimo_messaggio)]
-    )
+        [PROMPT_ROUTER] + ultimi_messaggi)
     
     logger.info(f"[ORCHESTRATORE] Categoria: {decisione.categoria}")
     
@@ -76,7 +73,7 @@ def nodo_agente_azioni(stato: StatoMultiAgente) -> dict:
         # Il modello ripete un'azione già eseguita (es. riaprire lo stesso sito): non rieseguirla
         logger.info("[AGENTE AZIONI] chiamata ripetuta ignorata")
         risultati = [m.content for m in stato["messages"] if isinstance(m, ToolMessage)]
-        risposta = AIMessage(content=risultati[-1].replace(AVVISO_PAGINA, "."))
+        risposta = AIMessage(content=risultati[-1])
 
     return {"messages": [risposta]}
 
@@ -93,6 +90,7 @@ def _solo_chiamate_ripetute(messaggi: list, nuove_chiamate: list) -> bool:
 def nodo_agente_ricerca(stato: StatoMultiAgente) -> dict:
     system_prompt = SystemMessage(content="""Sei un assistente specializzato nel recuperare informazioni dalle note personali dell'utente.
     REGOLE FERREE, da rispettare sempre:
+    - Per OGNI domanda chiama SEMPRE lo strumento cerca_note prima di rispondere, anche se nella conversazione ci sono già informazioni sull'argomento. Non dire mai che le note non contengono qualcosa senza aver appena cercato.
     - Riporta SOLO testo che appare letteralmente nel risultato dello strumento di ricerca. Non aggiungere MAI date, fonti, titoli o dettagli che non sono esplicitamente presenti nel risultato.
     - Se lo strumento restituisce "NESSUN RISULTATO PERTINENTE TROVATO", dillo chiaramente e fermati — non proporre contenuto alternativo o inventato.
     - Se i risultati trovati sembrano solo vagamente collegati alla domanda (non specifici), dillo esplicitamente invece di presentarli con sicurezza come se fossero la risposta esatta.
@@ -165,7 +163,7 @@ grafo.set_entry_point("orchestratore")
 grafo.add_conditional_edges(
     "orchestratore",
     lambda s: s["prossimo_agente"],
-    {"azioni": "agente_azioni", "ricerca": "agente_ricerca", "rifiuta": "rifiuta"}
+{"azioni": "agente_azioni", "ricerca": "agente_ricerca", "rifiuta": "agente_ricerca"}
 )
 
 grafo.add_conditional_edges("agente_ricerca", dopo_ricerca)
